@@ -12,6 +12,7 @@ import { produce, unwrap } from 'solid-js/store';
 
 // Imports from other packages
 import { yieldOrContinue } from 'main-thread-scheduling';
+import type { Feature } from 'geojson';
 
 // Helpers
 import { useI18nContext } from '../../i18n/i18n-solid';
@@ -77,10 +78,6 @@ async function onClickValidate(
     outputField = `${defaultOutputField} (${suffix})`;
     suffix += 1;
   }
-  const originalOutputValues = inputData.features.map(
-    (feature: { properties?: Record<string, unknown> }) => feature.properties?.[defaultOutputField],
-  );
-
   let newData;
   if (cartogramMethod === CartogramMethod.Olson) {
     newData = computeCartogramOlson(
@@ -89,10 +86,15 @@ async function onClickValidate(
       outputField,
     );
   } else if (cartogramMethod === CartogramMethod.GastnerSeguyMore) {
+    if (outputField !== defaultOutputField) {
+      // Keep the original value on its feature: GoCart can drop tiny regions.
+      inputData.features.forEach((feature: Feature) => {
+        feature.properties![outputField] = feature.properties!.area_error;
+      });
+    }
     newData = await computeCartogramGastnerSeguyMore(
       inputData,
       targetVariable,
-      mapStore.projection,
     );
   } else {
     newData = computeCartogramDougenik(
@@ -103,13 +105,14 @@ async function onClickValidate(
     );
   }
 
-  if (cartogramMethod === CartogramMethod.GastnerSeguyMore) {
-    newData.features.forEach((feature, index) => {
+  if (
+    cartogramMethod === CartogramMethod.GastnerSeguyMore
+    && outputField !== defaultOutputField
+  ) {
+    newData.features.forEach((feature) => {
       const properties = feature.properties!;
       const generatedValue = properties.area_error;
-      if (existingFieldNames.has(defaultOutputField)) {
-        properties[defaultOutputField] = originalOutputValues[index];
-      }
+      properties.area_error = properties[outputField];
       properties[outputField] = generatedValue;
     });
   }
